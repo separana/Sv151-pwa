@@ -1,4 +1,4 @@
-const VERSION = 'sv151-pwa-v3';
+// rebuildconst VERSION = 'sv151-pwa-v3';
 const APP_SHELL = [
   './',
   './index.html',
