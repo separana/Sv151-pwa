@@ -1,60 +1,6 @@
-// rebuildconst VERSION = 'sv151-pwa-v3';
-const APP_SHELL = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon.png'
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(VERSION);
-    await cache.addAll(APP_SHELL.map(u => new URL(u, self.registration.scope)));
-    self.skipWaiting();
-  })());
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)));
-    self.clients.claim();
-  })());
-});
-
-// Network-first met cache fallback
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  event.respondWith((async () => {
-    const cache = await caches.open(VERSION);
-    const cached = await cache.match(req);
-    try {
-      const res = await fetch(req);
-      // Cache TCG API responses en afbeeldingen
-      const url = new URL(req.url);
-      if (url.hostname.includes('pokemontcg.io') || url.pathname.endsWith('.png') || url.pathname.endsWith('.json')) {
-        cache.put(req, res.clone());
-      }
-      return res;
-    } catch (e) {
-      if (cached) return cached;
-      throw e;
-    }
-  })());
-});
-
-// Handmatige prefetch (lijst URLs)
-self.addEventListener('message', async (event) => {
-  const { type, urls } = event.data || {};
-  if (type === 'PREFETCH' && Array.isArray(urls)) {
-    const cache = await caches.open(VERSION);
-    await Promise.all(urls.map(async (u) => {
-      try {
-        const req = new Request(u, { mode: 'no-cors' });
-        const res = await fetch(req);
-        if (res) await cache.put(req, res.clone());
-      } catch (e) { /* negeren */ }
-    }));
-    event.ports[0]?.postMessage({ ok: true });
-  }
-});
+const VERSION='sv151-v2-1';
+const APP_SHELL=['./','./index.html','./manifest.json','./icon.png','./style.css','./script.js'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(APP_SHELL)).then(()=>self.skipWaiting()))});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k))))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',e=>{const req=e.request;e.respondWith((async()=>{const cache=await caches.open(VERSION);const hit=await cache.match(req);try{const res=await fetch(req);const url=new URL(req.url);if(url.hostname.includes('pokemontcg.io')||url.pathname.endsWith('.png')||url.pathname.endsWith('.json')||APP_SHELL.includes(url.pathname)){cache.put(req,res.clone()).catch(()=>{})}return res;}catch(err){if(hit) return hit; throw err;}})())});
+self.addEventListener('message',async (e)=>{const {type,cards}=e.data||{};if(type==='PREFETCH_ALL' && Array.isArray(cards)){const cache=await caches.open(VERSION);const urls=[...new Set(cards.flatMap(c=>[c.images?.small,c.images?.large]).filter(Boolean))];await Promise.all(urls.map(u=>cache.add(u).catch(()=>{})));e.ports[0]?.postMessage({done:true});}});

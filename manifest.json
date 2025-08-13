@@ -1,11 +1,15 @@
 {
-  "name": "SV151 – Pokémon 207 Tracker",
-  "short_name": "SV151",
-  "start_url": "./index.html",
+  "name": "SV151 \u2013 Tracker v2",
+  "short_name": "SV151 v2",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0b0d10",
   "theme_color": "#0b0d10",
   "icons": [
-    { "src": "icon.PNG", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
