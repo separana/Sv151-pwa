@@ -1,4 +1,4 @@
-const VERSION='sv151-live-v2';
+const VERSION='sv151-live-wish-v1';
 const APP_SHELL=['./','./index.html','./manifest.json','./icon.png','./style.css','./script.js'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(APP_SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k))))).then(()=>self.clients.claim()))});

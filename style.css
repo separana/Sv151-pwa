@@ -16,8 +16,11 @@ button.primary{border-color:rgba(234,203,107,.55);background:linear-gradient(180
 .own{position:absolute;top:8px;left:8px;background:rgba(58,215,164,.12);border:1px solid #3ad7a4;color:#3ad7a4;padding:2px 6px;border-radius:999px;font-size:12px;font-weight:800}
 .qty{position:absolute;top:8px;right:8px;padding:2px 6px;border-radius:999px;background:#1d2835;border:1px solid #2b3b52;font-size:12px}
 .price{position:absolute;right:8px;bottom:8px;padding:4px 8px;border-radius:10px;background:#18202b;border:1px solid #2a3a4f;font-weight:700;font-size:.85rem}
+.tabs{display:flex;gap:6px;margin-top:6px}
+.tabs .tab{padding:6px 10px;border-radius:10px;border:1px solid var(--soft);background:#121821;color:#cfe0f3;cursor:pointer}
+.tabs .tab.active{border-color:#806b2b;background:linear-gradient(180deg,#292310,#1c180c);color:#f7e7ac}
 dialog#viewer{border:none;border-radius:16px;padding:0;width:min(980px,96vw);background:#0f141a;color:#eaf1fa}
 .viewer{display:grid;grid-template-columns:1fr 1fr}.viewer .img{padding:14px;display:grid;place-items:center;background:#0a0f14}
 .viewer .img img{max-width:100%;height:auto}.viewer .info{padding:16px;display:grid;gap:10px}
-.viewer .plot{height:140px;border:1px solid #263342;border-radius:10px;background:#101822;display:flex;align-items:center;justify-content:center;position:relative}
+.viewer .plot{height:160px;border:1px solid #263342;border-radius:10px;background:#101822;display:flex;align-items:center;justify-content:center;position:relative}
 .small{font-size:12px;color:var(--muted)}
