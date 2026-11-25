@@ -400,4 +400,196 @@ function updateStats(){
 function saveAll(){
   const legacySync = {};
   for(const [k,v] of Object.entries(MASTER)){
-    if(v.n || v.rh) legacySync[k] = tr
+    if(v.n || v.rh) legacySync[k] = true;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({owned:legacySync}));
+  localStorage.setItem(MASTER_KEY, JSON.stringify(MASTER));
+  localStorage.setItem(WISH_KEY, JSON.stringify(WISH));
+  localStorage.setItem(QTY_KEY, JSON.stringify(QTY));
+  localStorage.setItem(PAID_KEY, JSON.stringify(PAID));
+}
+
+function openViewer(i){
+  if(i<0||i>=FILTERED.length) return;
+  IDX=i;
+  const c=FILTERED[i];
+  const st=getCardState(c.id);
+  const hasRH=hasReverseHolo(c);
+
+  big.src=c.images?.large||c.images?.small||'';
+  vName.textContent=c.name;
+  vNum.textContent='#'+c.number;
+  vRarity.textContent=c.rarity||'';
+  vTypes.innerHTML=(c.types||[]).map(t=>'<span class="chip">'+t+'</span>').join(' ');
+
+  const pN = pickPrice(c, PRICE_SOURCE, 'normal');
+  const pRH = hasRH ? pickPrice(c, PRICE_SOURCE, 'rh') : null;
+
+  vVariants.innerHTML = `
+    <div class="v-btn ${st.n?'on':''}" id="vToggleN">${st.n?'✓ ':''}Normal ${pN?'(€'+pN.toFixed(2)+')':''}</div>
+    ${hasRH ? `<div class="v-btn rh ${st.rh?'on':''}" id="vToggleRH">${st.rh?'✓ ':''}Reverse ${pRH?'(€'+pRH.toFixed(2)+')':''}</div>` : ''}
+  `;
+
+  document.getElementById('vToggleN').onclick=()=>{
+    st.n = !st.n; saveAll(); applyFilters(); openViewer(IDX);
+  };
+  if(hasRH){
+    document.getElementById('vToggleRH').onclick=()=>{
+      st.rh = !st.rh; saveAll(); applyFilters(); openViewer(IDX);
+    };
+  }
+
+  vPaid.value = PAID[c.id] || '';
+  document.getElementById('vSavePaid').onclick=()=>{
+    const val = parseFloat(vPaid.value);
+    if(!isNaN(val) && val > 0) PAID[c.id] = val; else delete PAID[c.id];
+    saveAll();
+    updateStats();
+    alert('Aankoopprijs opgeslagen.');
+  };
+
+  const searchName = encodeURIComponent(c.name.replace(/\(.*?\)/g,'').trim() + ' ' + c.number);
+  vCmLink.href = `https://www.cardmarket.com/en/Pokemon/Products/Search?searchString=${searchName}`;
+
+  drawHistory(c.id);
+  if(!viewer.open) viewer.showModal();
+}
+
+let touchStartX = 0;
+document.getElementById('viewerTouchArea').addEventListener('touchstart', e => {
+  touchStartX = e.changedTouches[0].screenX;
+}, {passive:true});
+document.getElementById('viewerTouchArea').addEventListener('touchend', e => {
+  const diff = e.changedTouches[0].screenX - touchStartX;
+  if(Math.abs(diff) > 55){
+    if(diff < 0) openViewer(IDX + 1);
+    else openViewer(IDX - 1);
+  }
+}, {passive:true});
+
+function drawHistory(cardId){
+  const cvs=document.getElementById('priceChart'), ctx=cvs.getContext('2d');
+  cvs.width=600; cvs.height=240; ctx.clearRect(0,0,cvs.width,cvs.height);
+  const samples=(HISTORY[cardId]||[]).slice(-40);
+  const key=(PRICE_SOURCE==='tcgplayer'?'tp':'cm');
+  const data=samples.map(s=>s[key]).filter(v=>typeof v==='number');
+  if(!data.length){
+    ctx.fillStyle='#9ab0c7'; ctx.font='13px system-ui';
+    ctx.fillText('Nog geen prijsgeschiedenis — wordt lokaal opgebouwd.',16,28);
+    return;
+  }
+  const min=Math.min(...data), max=Math.max(...data);
+  const pad=24, w=cvs.width-2*pad, h=cvs.height-2*pad;
+  ctx.strokeStyle='#263342'; ctx.strokeRect(pad,pad,w,h);
+  ctx.strokeStyle='#eacb6b'; ctx.lineWidth=2; ctx.beginPath();
+  data.forEach((v,i)=>{
+    const x=pad+(w*(i/(data.length-1||1)));
+    const y=pad+h-((v-min)/(max-min||1))*h;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.fillStyle='#9ab0c7'; ctx.font='12px system-ui';
+  ctx.fillText('min: €'+min.toFixed(2), pad+6, cvs.height-6);
+  ctx.fillText('max: €'+max.toFixed(2), cvs.width-95, cvs.height-6);
+}
+
+function logHistorySample(){
+  const t=Date.now();
+  for(const c of CARDS){
+    const cm=getDisplayPrice(c);
+    const tp=pickPrice(c,'tcgplayer','normal');
+    if(!HISTORY[c.id]) HISTORY[c.id]=[];
+    HISTORY[c.id].push({t,cm,tp});
+    if(HISTORY[c.id].length>120) HISTORY[c.id].shift();
+  }
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(HISTORY));
+}
+
+q.oninput=()=>{BINDER_PAGE=0;applyFilters();};
+typeSel.onchange=()=>{BINDER_PAGE=0;applyFilters();};
+rarSel.onchange=()=>{BINDER_PAGE=0;applyFilters();};
+ownedSel.onchange=()=>{BINDER_PAGE=0;applyFilters();};
+sortSel.onchange=()=>{BINDER_PAGE=0;applyFilters();};
+priceSourceSel.value=PRICE_SOURCE;
+priceSourceSel.onchange=()=>{PRICE_SOURCE=priceSourceSel.value; localStorage.setItem('sv151-price-source',PRICE_SOURCE); applyFilters();};
+
+const btnPromos = document.getElementById('btn-promos');
+function syncPromoBtn(){
+  btnPromos.textContent = `+ Promo's: ${SHOW_PROMOS?'AAN':'UIT'}`;
+  btnPromos.classList.toggle('active-toggle', SHOW_PROMOS);
+}
+btnPromos.onclick=()=>{
+  SHOW_PROMOS = !SHOW_PROMOS;
+  localStorage.setItem('sv151-show-promos', SHOW_PROMOS?'1':'0');
+  syncPromoBtn();
+  populateFilters();
+  applyFilters();
+};
+
+const btnBinder = document.getElementById('btn-binder');
+btnBinder.onclick=()=>{
+  BINDER_MODE = !BINDER_MODE;
+  BINDER_PAGE = 0;
+  btnBinder.textContent = `Binder 3×3: ${BINDER_MODE?'AAN':'UIT'}`;
+  btnBinder.classList.toggle('active-toggle', BINDER_MODE);
+  renderGrid();
+};
+document.getElementById('binderPrev').onclick=()=>{BINDER_PAGE--;renderGrid();};
+document.getElementById('binderNext').onclick=()=>{BINDER_PAGE++;renderGrid();};
+
+document.getElementById('btn-copy-dupes').onclick=async()=>{
+  const all = getAllActiveCards();
+  const dupes = all.filter(c => QTY[c.id] && QTY[c.id] > 1);
+  if(!dupes.length){
+    alert('Je hebt nog geen dubbele kaarten gemarkeerd (houd een kaart ingedrukt om dubbele toe te voegen).');
+    return;
+  }
+  const lines = ['Pokémon SV 151 – Dubbele kaarten (ruil/verkoop):', ...dupes.map(c => `- #${c.number} ${c.name} (${QTY[c.id]-1}x dubbel)`)];
+  try{
+    await navigator.clipboard.writeText(lines.join('\n'));
+    alert(`${dupes.length} dubbele kaarten gekopieerd naar je klembord!`);
+  }catch(_){
+    prompt('Kopieer je ruillijst:', lines.join('\n'));
+  }
+};
+
+document.getElementById('btn-export').onclick=()=>{
+  const blob=new Blob([JSON.stringify({master:MASTER,wishlist:WISH,qty:QTY,paid:PAID},null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sv151-masterset-backup.json'; a.click();
+};
+document.getElementById('btn-import').onclick=()=>{
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json';
+  inp.onchange=async()=>{
+    const txt=await inp.files[0].text();
+    const obj=JSON.parse(txt);
+    if(obj.master) MASTER=obj.master;
+    else if(obj.owned){
+      for(const [k,v] of Object.entries(obj.owned)) MASTER[k]={n:!!v,rh:false};
+    }
+    WISH=obj.wishlist||{}; QTY=obj.qty||{}; PAID=obj.paid||{};
+    saveAll(); applyFilters();
+  };
+  inp.click();
+};
+
+document.getElementById('btn-cache').onclick=async()=>{
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const ch=new MessageChannel();
+    ch.port1.onmessage=(e)=>{if(e.data?.done) alert('Alle kaartafbeeldingen zijn gecachet voor offline gebruik!');};
+    reg.active.postMessage({type:'PREFETCH_ALL',cards:getAllActiveCards()},[ch.port2]);
+  }catch(e){alert('Service worker nog niet actief. Herlaad en probeer opnieuw.');}
+};
+
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js'));}
+
+(function init(){
+  syncPromoBtn();
+  try{
+    const cache=JSON.parse(localStorage.getItem('sv151-cards-cache')||'[]');
+    if(cache.length){CARDS=cache; populateFilters(); applyFilters(); statusEl.textContent=`Cache: ${CARDS.length} kaarten`;}
+  }catch{}
+  fetchAll();
+  setTabs();
+})();
+  
