@@ -1,3 +1,4 @@
+
 const STORAGE_KEY='sv151-collectie',WISH_KEY='sv151-wishlist',QTY_KEY='sv151-qty',HISTORY_KEY='sv151-history',MASTER_KEY='sv151-master-v1',PAID_KEY='sv151-paid';
 let LEGACY_OWNED=(JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}').owned)||{};
 let MASTER=JSON.parse(localStorage.getItem(MASTER_KEY)||'{}');
@@ -129,7 +130,6 @@ async function fetchAll(){
     for(const c of list) c.sortNum = parseInt(c.number, 10);
     list.sort((a,b)=>(a.sortNum||0)-(b.sortNum||0));
 
-    // Behoud eventuele eerdere prijzen uit cache tijdens het bijwerken
     const oldMap = {};
     for(const old of CARDS) oldMap[old.id] = old;
     for(const c of list){
@@ -137,14 +137,12 @@ async function fetchAll(){
       if(oldMap[c.id]?.tcgplayer) c.tcgplayer = oldMap[c.id].tcgplayer;
     }
 
-    // Toon kaarten DIRECT op scherm
     CARDS = list;
     localStorage.setItem('sv151-cards-cache',JSON.stringify(CARDS));
     populateFilters();
     applyFilters();
     statusEl.textContent = `Geladen: ${CARDS.length} kaarten • Cardmarket prijzen bijwerken…`;
 
-    // Haal prijzen in kleine batches op de achtergrond op
     const priceRes = await fetch('https://api.tcgdex.net/v2/en/sets/sv03.5');
     if (priceRes.ok) {
       const setData = await priceRes.json();
@@ -395,4 +393,11 @@ function updateStats(){
   const rContainer = document.getElementById('rarityStats');
   rContainer.innerHTML = Object.entries(rarMap).map(([name, obj])=>{
     const p = Math.round((obj.got/obj.total)*100);
-    return `<div class="r-stat"><div class="r-top"><span>${name}</span><b>${obj.got}/${obj.total} (${p}%)</b></div><div class="r-bar"><i style="width:${p}%
+    return `<div class="r-stat"><div class="r-top"><span>${name}</span><b>${obj.got}/${obj.total} (${p}%)</b></div><div class="r-bar"><i style="width:${p}%"></i></div></div>`;
+  }).join('');
+}
+
+function saveAll(){
+  const legacySync = {};
+  for(const [k,v] of Object.entries(MASTER)){
+    if(v.n || v.rh) legacySync[k] = tr
