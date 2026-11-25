@@ -1,4 +1,3 @@
-
 const STORAGE_KEY='sv151-collectie',WISH_KEY='sv151-wishlist',QTY_KEY='sv151-qty',HISTORY_KEY='sv151-history';
 let OWNED=(JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}').owned)||{};
 let WISH=JSON.parse(localStorage.getItem(WISH_KEY)||'{}');
@@ -24,12 +23,95 @@ function setTabs(){document.getElementById('tab-all').classList.toggle('active',
 
 const USD_TO_EUR=0.92, toEUR=x=>x.toLocaleString('nl-BE',{style:'currency',currency:'EUR'});
 function rarityColor(r){if(!r) return 'var(--soft)'; r=r.toLowerCase(); if(r.includes('illustration'))return'var(--r-illustration)'; if(r.includes('double'))return'var(--r-double)'; if(r.includes('ultra')||r.includes('ex'))return'var(--r-ultra)'; if(r.includes('rare'))return'var(--r-rare)'; if(r.includes('uncommon'))return'var(--r-uncommon)'; return'var(--r-common)';}
-function pickPrice(c,src){if(src==='tcgplayer'){const tp=c.tcgplayer?.prices; if(tp){const usd=[tp.holofoil?.market,tp.normal?.market,tp.reverseHolofoil?.market,tp.ultraRare?.market,tp.rainbowRare?.market,tp.gold?.market].filter(v=>typeof v==='number'&&v>0); if(usd.length)return +(Math.max(...usd)*USD_TO_EUR).toFixed(2);} } else {const cm=c.cardmarket?.prices; if(cm){const arr=[cm.trendPrice,cm.avg7,cm.avg30,cm.averageSellPrice,cm.lowPrice,cm.suggestedPrice,cm.reverseHoloTrend,cm.reverseHoloSell].filter(v=>typeof v==='number'&&v>0); if(arr.length) return +Math.max(...arr).toFixed(2);} } return null;}
 
-async function fetchAll(){try{statusEl.textContent='Laden…'; const url=new URL('https://api.pokemontcg.io/v2/cards'); url.searchParams.set('q','set.id:"sv3pt5"'); url.searchParams.set('pageSize','250'); const res=await fetch(url); const data=await res.json(); CARDS=(data.data||[]); CARDS.sort((a,b)=>Number(a.number.replace(/\D/g,''))-Number(b.number.replace(/\D/g,''))); localStorage.setItem('sv151-cards-cache',JSON.stringify(CARDS)); statusEl.textContent=`Geladen: ${CARDS.length} kaarten`; populateFilters(); applyFilters(); logHistorySample(); }catch(e){statusEl.textContent='Fout bij laden'; console.error(e); alert('Kon kaarten niet laden.');}}
+function pickPrice(c,src){
+  if(src==='tcgplayer'){
+    const tp=c.tcgplayer?.prices;
+    if(tp){
+      const usd=[tp.holofoil?.market,tp.normal?.market,tp.reverseHolofoil?.market,tp.ultraRare?.market,tp.rainbowRare?.market,tp.gold?.market].filter(v=>typeof v==='number'&&v>0);
+      if(usd.length)return +(Math.max(...usd)*USD_TO_EUR).toFixed(2);
+    }
+  } else {
+    const cm=c.cardmarket?.prices;
+    if(cm){
+      const arr=[cm.trendPrice,cm.avg7,cm.avg30,cm.averageSellPrice,cm.lowPrice,cm.suggestedPrice,cm.reverseHoloTrend,cm.reverseHoloSell].filter(v=>typeof v==='number'&&v>0);
+      if(arr.length) return +Math.max(...arr).toFixed(2);
+    }
+  }
+  return null;
+}
+
+async function fetchAll(){
+  try{
+    statusEl.textContent='Kaarten & prijzen laden…';
+    const mirrorRes = await fetch('https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/cards/en/sv3pt5.json');
+    if (!mirrorRes.ok) throw new Error('Kan kaartdata niet ophalen');
+    const list = await mirrorRes.json();
+
+    // Haal actuele Cardmarket + TCGplayer prijzen op via TCGdex (geen API-key nodig)
+    try {
+      const priceRes = await fetch('https://api.tcgdex.net/v2/en/sets/sv03.5');
+      if (priceRes.ok) {
+        const setData = await priceRes.json();
+        const priceMap = {};
+        if (Array.isArray(setData.cards)) {
+          await Promise.all(setData.cards.map(async (item) => {
+            try {
+              const r = await fetch(`https://api.tcgdex.net/v2/en/cards/${item.id}`);
+              if (r.ok) {
+                const detail = await r.json();
+                const num = String(parseInt(detail.localId, 10));
+                priceMap[num] = detail.pricing || null;
+              }
+            } catch (_) {}
+          }));
+        }
+        for (const c of list) {
+          const num = String(parseInt(c.number, 10));
+          const p = priceMap[num];
+          if (p?.cardmarket) {
+            c.cardmarket = {
+              prices: {
+                trendPrice: p.cardmarket.trend,
+                avg7: p.cardmarket.avg7,
+                avg30: p.cardmarket.avg30,
+                averageSellPrice: p.cardmarket.avg,
+                lowPrice: p.cardmarket.low,
+                reverseHoloTrend: p.cardmarket['trend-holo']
+              }
+            };
+          }
+          if (p?.tcgplayer) {
+            c.tcgplayer = {
+              prices: {
+                normal: { market: p.tcgplayer.normal?.marketPrice },
+                holofoil: { market: p.tcgplayer.holofoil?.marketPrice },
+                reverseHolofoil: { market: p.tcgplayer['reverse-holofoil']?.marketPrice }
+              }
+            };
+          }
+        }
+      }
+    } catch (_) {}
+
+    CARDS = list;
+    CARDS.sort((a,b)=>Number(a.number.replace(/\D/g,''))-Number(b.number.replace(/\D/g,'')));
+    localStorage.setItem('sv151-cards-cache',JSON.stringify(CARDS));
+    const hasPrices = CARDS.some(c => c.cardmarket?.prices);
+    statusEl.textContent = hasPrices ? `Geladen: ${CARDS.length} kaarten (incl. prijzen)` : `Geladen: ${CARDS.length} kaarten`;
+    populateFilters();
+    applyFilters();
+    logHistorySample();
+  }catch(e){
+    statusEl.textContent='Fout bij laden';
+    console.error(e);
+    if(!CARDS.length) alert('Kon kaarten niet laden.');
+  }
+}
+
 function populateFilters(){const types=[...new Set(CARDS.flatMap(c=>c.types||[]))].sort(); typeSel.innerHTML='<option value="">Alle types</option>'+types.map(t=>`<option value="${t}">${t}</option>`).join(''); const rars=[...new Set(CARDS.map(c=>c.rarity).filter(Boolean))].sort(); rarSel.innerHTML='<option value="">Alle rarities</option>'+rars.map(r=>`<option value="${r}">${r}</option>`).join('');}
 function applyFilters(){const term=q.value.trim().toLowerCase(); FILTERED=CARDS.filter(c=>{ if(ACTIVE_TAB==='wish'&&!WISH[c.id])return false; if(term){const txt=(c.name+' '+c.number).toLowerCase(); if(!txt.includes(term))return false;} if(typeSel.value&&!(c.types||[]).includes(typeSel.value))return false; if(rarSel.value&&(c.rarity||'')!==rarSel.value)return false; const has=!!OWNED[c.id]; if(ownedSel.value==='owned'&&!has)return false; if(ownedSel.value==='missing'&&has)return false; return true;}); const key=sortSel.value; if(key==='price'){FILTERED.sort((a,b)=>(pickPrice(b,PRICE_SOURCE)||0)-(pickPrice(a,PRICE_SOURCE)||0));} else if(key==='name'){FILTERED.sort((a,b)=>a.name.localeCompare(b.name));} else {FILTERED.sort((a,b)=>Number(a.number.replace(/\D/g,''))-Number(b.number.replace(/\D/g,'')));} renderGrid(); updateStats();}
-function renderGrid(){grid.innerHTML=''; FILTERED.forEach((c,idx)=>{const card=document.createElement('div'); card.className='card'; card.dataset.cardId=c.id; card.style.borderColor=rarityColor(c.rarity); const small=c.images?.small||''; card.innerHTML=`<img loading="lazy" src="${small}" alt="${c.name}" data-idx="${idx}"><div class="meta"><span class="chip">#${c.number}</span><span class="chip">${c.rarity||''}</span></div>`; const p=pickPrice(c,PRICE_SOURCE); if(p){const x=document.createElement('div'); x.className='price'; x.textContent='€ '+p.toFixed(2); card.appendChild(x);} if(OWNED[c.id]){const o=document.createElement('div'); o.className='own'; o.textContent='✓'; card.appendChild(o);} if(QTY[c.id]&&QTY[c.id]>1){const qx=document.createElement('div'); qx.className='qty'; qx.textContent='x'+QTY[c.id]; card.appendChild(qx);} let pressTimer=null; card.addEventListener('touchstart',()=>{pressTimer=setTimeout(()=>{QTY[c.id]=(QTY[c.id]||(OWNED[c.id]?1:0))+1; OWNED[c.id]=True; saveAll(); applyFilters();},500)}); card.addEventListener('touchend',()=>clearTimeout(pressTimer)); card.addEventListener('click',()=>{OWNED[c.id]=!OWNED[c.id]; if(OWNED[c.id]&&!QTY[c.id])QTY[c.id]=1; if(!OWNED[c.id]){delete QTY[c.id]; delete WISH[c.id];} saveAll(); applyFilters();}); card.querySelector('img').addEventListener('dblclick',(ev)=>{ev.stopPropagation(); openViewer(idx);}); if(!OWNED[c.id]){const wishBtn=document.createElement('div'); wishBtn.className='chip'; wishBtn.style.position='absolute'; wishBtn.style.left='8px'; wishBtn.style.bottom='8px'; wishBtn.style.cursor='pointer'; wishBtn.textContent=WISH[c.id]?'★ Op wishlist':'☆ Wishlist'; wishBtn.onclick=(e)=>{e.stopPropagation(); if(WISH[c.id]) delete WISH[c.id]; else WISH[c.id]=true; saveAll(); applyFilters();}; card.appendChild(wishBtn);} grid.appendChild(card);});}
+function renderGrid(){grid.innerHTML=''; FILTERED.forEach((c,idx)=>{const card=document.createElement('div'); card.className='card'; card.dataset.cardId=c.id; card.style.borderColor=rarityColor(c.rarity); const small=c.images?.small||''; card.innerHTML=`<img loading="lazy" src="${small}" alt="${c.name}" data-idx="${idx}"><div class="meta"><span class="chip">#${c.number}</span><span class="chip">${c.rarity||''}</span></div>`; const p=pickPrice(c,PRICE_SOURCE); if(p){const x=document.createElement('div'); x.className='price'; x.textContent='€ '+p.toFixed(2); card.appendChild(x);} if(OWNED[c.id]){const o=document.createElement('div'); o.className='own'; o.textContent='✓'; card.appendChild(o);} if(QTY[c.id]&&QTY[c.id]>1){const qx=document.createElement('div'); qx.className='qty'; qx.textContent='x'+QTY[c.id]; card.appendChild(qx);} let pressTimer=null; card.addEventListener('touchstart',()=>{pressTimer=setTimeout(()=>{QTY[c.id]=(QTY[c.id]||(OWNED[c.id]?1:0))+1; OWNED[c.id]=true; saveAll(); applyFilters();},500)}); card.addEventListener('touchend',()=>clearTimeout(pressTimer)); card.addEventListener('click',()=>{OWNED[c.id]=!OWNED[c.id]; if(OWNED[c.id]&&!QTY[c.id])QTY[c.id]=1; if(!OWNED[c.id]){delete QTY[c.id]; delete WISH[c.id];} saveAll(); applyFilters();}); card.querySelector('img').addEventListener('dblclick',(ev)=>{ev.stopPropagation(); openViewer(idx);}); if(!OWNED[c.id]){const wishBtn=document.createElement('div'); wishBtn.className='chip'; wishBtn.style.position='absolute'; wishBtn.style.left='8px'; wishBtn.style.bottom='8px'; wishBtn.style.cursor='pointer'; wishBtn.textContent=WISH[c.id]?'★ Op wishlist':'☆ Wishlist'; wishBtn.onclick=(e)=>{e.stopPropagation(); if(WISH[c.id]) delete WISH[c.id]; else WISH[c.id]=true; saveAll(); applyFilters();}; card.appendChild(wishBtn);} grid.appendChild(card);});}
 function updateStats(){const total=CARDS.length||207; const ownedN=Object.keys(OWNED).filter(k=>OWNED[k]).length; ownCount.textContent=ownedN; totCount.textContent=total; const perc=Math.round(ownedN/total*1000)/10; pct.textContent=perc; bar.style.width=Math.round(ownedN/total*100)+'%'; let ownVal=0,wishVal=0; for(const c of CARDS){const p=pickPrice(c,PRICE_SOURCE); if(!p) continue; if(OWNED[c.id]) ownVal+=p; if(WISH[c.id]&&!OWNED[c.id]) wishVal+=p;} ownedValue.textContent=toEUR(+ownVal.toFixed(2)); wishValue.textContent=toEUR(+wishVal.toFixed(2));}
 function saveAll(){localStorage.setItem(STORAGE_KEY, JSON.stringify({owned:OWNED})); localStorage.setItem(WISH_KEY, JSON.stringify(WISH)); localStorage.setItem(QTY_KEY, JSON.stringify(QTY));}
 function openViewer(i){if(i<0||i>=FILTERED.length) return; IDX=i; const c=FILTERED[i]; big.src=c.images?.large||c.images?.small||''; vName.textContent=c.name; vNum.textContent='#'+c.number; vRarity.textContent=c.rarity||''; vTypes.innerHTML=(c.types||[]).map(t=>'<span class="chip">'+t+'</span>').join(' '); drawHistory(c.id); viewer.showModal();}
