@@ -11,10 +11,8 @@ let PRICE_SOURCE=localStorage.getItem('sv151-price-source')||'cardmarket';
 let SHOW_PROMOS=localStorage.getItem('sv151-show-promos')==='1';
 let BINDER_MODE=false, BINDER_PAGE=0;
 
-// Reguliere ex-kaarten in SV 151 (#001-#165) die GEEN Reverse Holo hebben
 const NO_RH_NUMBERS = new Set([3,6,9,24,38,40,65,76,115,124,145,151]);
 
-// Bijbehorende SVP Black Star Promo's & Speciale 151 Varianten
 const EXTRA_151_PROMOS = [
   { id:'svp-046', number:'SVP 046', sortNum:1001, name:'Bulbasaur (151 Promo)', rarity:'Promo', types:['Grass'], isPromo:true, images:{small:'https://images.pokemontcg.io/svp/46.png',large:'https://images.pokemontcg.io/svp/46_hires.png'} },
   { id:'svp-047', number:'SVP 047', sortNum:1002, name:'Charmander (151 Promo)', rarity:'Promo', types:['Fire'], isPromo:true, images:{small:'https://images.pokemontcg.io/svp/47.png',large:'https://images.pokemontcg.io/svp/47_hires.png'} },
@@ -67,9 +65,7 @@ function hasReverseHolo(c){
 }
 
 function getCardState(id){
-  if(!MASTER[id]){
-    MASTER[id] = { n: !!LEGACY_OWNED[id], rh: false };
-  }
+  if(!MASTER[id]) MASTER[id] = { n: !!LEGACY_OWNED[id], rh: false };
   return MASTER[id];
 }
 
@@ -125,18 +121,39 @@ function getDisplayPrice(c){
 
 async function fetchAll(){
   try{
-    statusEl.textContent='Kaarten & prijzen laden…';
+    statusEl.textContent='Kaarten laden…';
     const mirrorRes = await fetch('https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/cards/en/sv3pt5.json');
     if (!mirrorRes.ok) throw new Error('Kan kaartdata niet ophalen');
     const list = await mirrorRes.json();
 
-    try {
-      const priceRes = await fetch('https://api.tcgdex.net/v2/en/sets/sv03.5');
-      if (priceRes.ok) {
-        const setData = await priceRes.json();
+    for(const c of list) c.sortNum = parseInt(c.number, 10);
+    list.sort((a,b)=>(a.sortNum||0)-(b.sortNum||0));
+
+    // Behoud eventuele eerdere prijzen uit cache tijdens het bijwerken
+    const oldMap = {};
+    for(const old of CARDS) oldMap[old.id] = old;
+    for(const c of list){
+      if(oldMap[c.id]?.cardmarket) c.cardmarket = oldMap[c.id].cardmarket;
+      if(oldMap[c.id]?.tcgplayer) c.tcgplayer = oldMap[c.id].tcgplayer;
+    }
+
+    // Toon kaarten DIRECT op scherm
+    CARDS = list;
+    localStorage.setItem('sv151-cards-cache',JSON.stringify(CARDS));
+    populateFilters();
+    applyFilters();
+    statusEl.textContent = `Geladen: ${CARDS.length} kaarten • Cardmarket prijzen bijwerken…`;
+
+    // Haal prijzen in kleine batches op de achtergrond op
+    const priceRes = await fetch('https://api.tcgdex.net/v2/en/sets/sv03.5');
+    if (priceRes.ok) {
+      const setData = await priceRes.json();
+      if (Array.isArray(setData.cards)) {
         const priceMap = {};
-        if (Array.isArray(setData.cards)) {
-          await Promise.all(setData.cards.map(async (item) => {
+        const batchSize = 20;
+        for(let i = 0; i < setData.cards.length; i += batchSize){
+          const batch = setData.cards.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (item) => {
             try {
               const r = await fetch(`https://api.tcgdex.net/v2/en/cards/${item.id}`);
               if (r.ok) {
@@ -147,8 +164,8 @@ async function fetchAll(){
             } catch (_) {}
           }));
         }
-        for (const c of list) {
-          c.sortNum = parseInt(c.number, 10);
+
+        for (const c of CARDS) {
           const num = String(c.sortNum);
           const p = priceMap[num];
           if (p?.cardmarket) {
@@ -173,21 +190,15 @@ async function fetchAll(){
             };
           }
         }
+        localStorage.setItem('sv151-cards-cache',JSON.stringify(CARDS));
+        applyFilters();
+        logHistorySample();
+        statusEl.textContent = `Geladen: ${CARDS.length} kaarten (incl. actuele Cardmarket prijzen)`;
       }
-    } catch (_) {}
-
-    CARDS = list;
-    CARDS.sort((a,b)=>(a.sortNum||parseInt(a.number,10))-(b.sortNum||parseInt(b.number,10)));
-    localStorage.setItem('sv151-cards-cache',JSON.stringify(CARDS));
-    const hasPrices = CARDS.some(c => c.cardmarket?.prices);
-    statusEl.textContent = hasPrices ? `Geladen: ${CARDS.length} basis- en secret rares (incl. Cardmarket prijzen)` : `Geladen: ${CARDS.length} kaarten`;
-    populateFilters();
-    applyFilters();
-    logHistorySample();
+    }
   }catch(e){
-    statusEl.textContent='Fout bij laden (offline cache actief)';
+    statusEl.textContent='Offline modus actief';
     console.error(e);
-    if(!CARDS.length) alert('Kon kaarten niet laden.');
   }
 }
 
@@ -296,7 +307,6 @@ function renderGrid(){
       </div>
     `;
 
-    // Variant knoppen
     card.querySelectorAll('.v-btn').forEach(btn=>{
       btn.onclick=(e)=>{
         e.stopPropagation();
@@ -310,7 +320,6 @@ function renderGrid(){
       };
     });
 
-    // Wishlist sterretje
     const wBtn = card.querySelector('.wish-dot');
     if(wBtn){
       wBtn.onclick=(e)=>{
@@ -321,7 +330,6 @@ function renderGrid(){
       };
     }
 
-    // Lang tikken = dubbele verhogen
     let pressTimer=null;
     const imgWrap = card.querySelector('.img-wrap');
     imgWrap.addEventListener('touchstart',()=>{
@@ -372,7 +380,7 @@ function updateStats(){
   }
 
   ownCount.textContent = ownedSlots;
-  totCount.textContent = totalSlots;
+  totCount.textContent = totalSlots || (SHOW_PROMOS ? 381 : 360);
   const perc = totalSlots ? Math.round(ownedSlots/totalSlots*1000)/10 : 0;
   pct.textContent = perc;
   bar.style.width = Math.min(100, Math.round(perc)) + '%';
@@ -384,18 +392,7 @@ function updateStats(){
   const diffStr = totalPaid > 0 ? ` (${diff>=0?'+':''}${toEUR(+diff.toFixed(2))})` : '';
   investInfo.textContent = `Betaald: ${toEUR(+totalPaid.toFixed(2))}${diffStr}`;
 
-  // Zeldzaamheid overzicht
   const rContainer = document.getElementById('rarityStats');
   rContainer.innerHTML = Object.entries(rarMap).map(([name, obj])=>{
     const p = Math.round((obj.got/obj.total)*100);
-    return `<div class="r-stat"><div class="r-top"><span>${name}</span><b>${obj.got}/${obj.total} (${p}%)</b></div><div class="r-bar"><i style="width:${p}%"></i></div></div>`;
-  }).join('');
-}
-
-function saveAll(){
-  const legacySync = {};
-  for(const [k,v] of Object.entries(MASTER)){
-    if(v.n || v.rh) legacySync[k] = true;
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({owned:legacySync}));
-  localStorage.setItem(MASTER_KEY, 
+    return `<div class="r-stat"><div class="r-top"><span>${name}</span><b>${obj.got}/${obj.total} (${p}%)</b></div><div class="r-bar"><i style="width:${p}%
