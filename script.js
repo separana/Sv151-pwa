@@ -1,4 +1,3 @@
-
 const STORAGE_KEY='sv151-collectie',WISH_KEY='sv151-wishlist',QTY_KEY='sv151-qty',HISTORY_KEY='sv151-history',MASTER_KEY='sv151-master-v1',PAID_KEY='sv151-paid';
 let LEGACY_OWNED=(JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}').owned)||{};
 let MASTER=JSON.parse(localStorage.getItem(MASTER_KEY)||'{}');
@@ -13,6 +12,19 @@ let SHOW_PROMOS=localStorage.getItem('sv151-show-promos')==='1';
 let BINDER_MODE=false, BINDER_PAGE=0;
 
 const NO_RH_NUMBERS = new Set([3,6,9,24,38,40,65,76,115,124,145,151]);
+
+const TYPE_GLOWS = {
+  Grass: 'rgba(58, 215, 164, 0.14)',
+  Fire: 'rgba(249, 115, 22, 0.16)',
+  Water: 'rgba(56, 189, 248, 0.15)',
+  Lightning: 'rgba(250, 204, 21, 0.15)',
+  Psychic: 'rgba(217, 70, 239, 0.15)',
+  Fighting: 'rgba(234, 88, 12, 0.15)',
+  Darkness: 'rgba(148, 163, 184, 0.15)',
+  Metal: 'rgba(203, 213, 225, 0.15)',
+  Dragon: 'rgba(234, 179, 8, 0.16)',
+  Colorless: 'rgba(226, 232, 240, 0.10)'
+};
 
 const EXTRA_151_PROMOS = [
   { id:'svp-046', number:'SVP 046', sortNum:1001, name:'Bulbasaur (151 Promo)', rarity:'Promo', types:['Grass'], isPromo:true, images:{small:'https://images.pokemontcg.io/svp/46.png',large:'https://images.pokemontcg.io/svp/46_hires.png'} },
@@ -48,11 +60,30 @@ const viewer=document.getElementById('viewer'), big=document.getElementById('big
 vNum=document.getElementById('vNum'), vRarity=document.getElementById('vRarity'), vTypes=document.getElementById('vTypes'),
 vVariants=document.getElementById('vVariants'), vPaid=document.getElementById('vPaid'), vCmLink=document.getElementById('vCmLink');
 
+let toastTimer=null;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2400);
+}
+
 document.getElementById('closeBtn').onclick=()=>viewer.close();
 document.getElementById('prevBtn').onclick=()=>openViewer(IDX-1);
 document.getElementById('nextBtn').onclick=()=>openViewer(IDX+1);
 document.getElementById('tab-all').onclick=()=>{ACTIVE_TAB='all';BINDER_PAGE=0;setTabs();applyFilters();};
 document.getElementById('tab-wish').onclick=()=>{ACTIVE_TAB='wish';BINDER_PAGE=0;setTabs();applyFilters();};
+
+// Uitklapbare filterbalk
+const btnFilters = document.getElementById('btn-filters');
+const filterDrawer = document.getElementById('filterDrawer');
+btnFilters.onclick=()=>{
+  const open = filterDrawer.style.display === 'none';
+  filterDrawer.style.display = open ? 'block' : 'none';
+  btnFilters.textContent = open ? 'Filters ▴' : 'Filters ▾';
+  btnFilters.classList.toggle('active-toggle', open);
+};
 
 function setTabs(){
   document.getElementById('tab-all').classList.toggle('active',ACTIVE_TAB==='all');
@@ -255,6 +286,7 @@ function renderGrid(){
   grid.innerHTML='';
   grid.classList.toggle('binder-mode', BINDER_MODE);
   const binderBar = document.getElementById('binderBar');
+  const pageSel = document.getElementById('binderPageSel');
 
   let listToRender = FILTERED;
   if(BINDER_MODE){
@@ -263,11 +295,14 @@ function renderGrid(){
     const maxPages = Math.max(1, Math.ceil(FILTERED.length / perPage));
     if(BINDER_PAGE >= maxPages) BINDER_PAGE = maxPages - 1;
     if(BINDER_PAGE < 0) BINDER_PAGE = 0;
+
+    pageSel.innerHTML = Array.from({length:maxPages}, (_,i)=>`<option value="${i}" ${i===BINDER_PAGE?'selected':''}>Pagina ${i+1} / ${maxPages}</option>`).join('');
+
     const start = BINDER_PAGE * perPage;
     listToRender = FILTERED.slice(start, start + perPage);
     const firstNum = listToRender[0]?.number || '—';
     const lastNum = listToRender[listToRender.length-1]?.number || '—';
-    document.getElementById('binderTitle').textContent = `Pagina ${BINDER_PAGE+1} / ${maxPages} (#${firstNum} – #${lastNum})`;
+    document.getElementById('binderRange').textContent = `#${firstNum} – #${lastNum}`;
   } else {
     binderBar.style.display = 'none';
   }
@@ -278,11 +313,13 @@ function renderGrid(){
     const hasRH = hasReverseHolo(c);
     const comp = isCardComplete(c);
     const any = isCardAnyOwned(c);
+    const primaryType = (c.types && c.types[0]) || 'Colorless';
 
     const card=document.createElement('div');
     card.className='card ' + (comp ? 'is-complete' : (!any ? 'is-missing' : ''));
     card.dataset.cardId=c.id;
     card.style.borderColor=rarityColor(c.rarity);
+    card.style.setProperty('--type-glow', TYPE_GLOWS[primaryType] || TYPE_GLOWS.Colorless);
 
     const small=c.images?.small||'';
     const p=getDisplayPrice(c);
@@ -314,6 +351,7 @@ function renderGrid(){
         if(!isCardAnyOwned(c)) delete QTY[c.id];
         if(isCardComplete(c)) delete WISH[c.id];
         saveAll();
+        pulseProgress();
         applyFilters();
       };
     });
@@ -322,7 +360,8 @@ function renderGrid(){
     if(wBtn){
       wBtn.onclick=(e)=>{
         e.stopPropagation();
-        if(WISH[c.id]) delete WISH[c.id]; else WISH[c.id]=true;
+        if(WISH[c.id]){ delete WISH[c.id]; showToast('Verwijderd van wishlist'); }
+        else { WISH[c.id]=true; showToast('★ Toegevoegd aan wishlist'); }
         saveAll();
         applyFilters();
       };
@@ -335,6 +374,7 @@ function renderGrid(){
         QTY[c.id]=(QTY[c.id]||(any?1:0))+1;
         if(!any) st.n = true;
         saveAll();
+        showToast(`${c.name}: nu x${QTY[c.id]} in bezit`);
         applyFilters();
       },500);
     },{passive:true});
@@ -343,6 +383,24 @@ function renderGrid(){
 
     grid.appendChild(card);
   });
+
+  // Vul laatste binderpagina aan tot 9 lege mapvakjes
+  if(BINDER_MODE && listToRender.length > 0 && listToRender.length < 9){
+    const emptySlots = 9 - listToRender.length;
+    for(let i=0; i<emptySlots; i++){
+      const pocket = document.createElement('div');
+      pocket.className = 'card empty-pocket';
+      pocket.textContent = 'Leeg vak';
+      grid.appendChild(pocket);
+    }
+  }
+}
+
+function pulseProgress(){
+  const prog = document.querySelector('.progress');
+  if(!prog) return;
+  prog.classList.add('pulse');
+  setTimeout(()=>prog.classList.remove('pulse'),350);
 }
 
 function updateStats(){
@@ -445,7 +503,7 @@ function openViewer(i){
     if(!isNaN(val) && val > 0) PAID[c.id] = val; else delete PAID[c.id];
     saveAll();
     updateStats();
-    alert('Aankoopprijs opgeslagen.');
+    showToast('Aankoopprijs opgeslagen');
   };
 
   const searchName = encodeURIComponent(c.name.replace(/\(.*?\)/g,'').trim() + ' ' + c.number);
@@ -455,13 +513,39 @@ function openViewer(i){
   if(!viewer.open) viewer.showModal();
 }
 
+// Interactieve 3D Holo-glans in viewer
+const holoCard = document.getElementById('holoCard');
+const holoShine = document.getElementById('holoShine');
+function updateHoloMove(clientX, clientY){
+  const rect = holoCard.getBoundingClientRect();
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  const rotY = (x - 0.5) * 18;
+  const rotX = (0.5 - y) * 18;
+  holoCard.classList.add('active');
+  holoCard.style.transform = `rotateX(${rotX.toFixed(1)}deg) rotateY(${rotY.toFixed(1)}deg)`;
+  holoShine.style.setProperty('--mx', `${(x*100).toFixed(0)}%`);
+  holoShine.style.setProperty('--my', `${(y*100).toFixed(0)}%`);
+}
+function resetHoloMove(){
+  holoCard.classList.remove('active');
+  holoCard.style.transform = 'rotateX(0deg) rotateY(0deg)';
+}
+holoCard.addEventListener('mousemove', e => updateHoloMove(e.clientX, e.clientY));
+holoCard.addEventListener('mouseleave', resetHoloMove);
+holoCard.addEventListener('touchmove', e => {
+  if(e.touches[0]) updateHoloMove(e.touches[0].clientX, e.touches[0].clientY);
+}, {passive:true});
+holoCard.addEventListener('touchend', resetHoloMove);
+
+// Swipe in viewer
 let touchStartX = 0;
 document.getElementById('viewerTouchArea').addEventListener('touchstart', e => {
   touchStartX = e.changedTouches[0].screenX;
 }, {passive:true});
 document.getElementById('viewerTouchArea').addEventListener('touchend', e => {
   const diff = e.changedTouches[0].screenX - touchStartX;
-  if(Math.abs(diff) > 55){
+  if(Math.abs(diff) > 65){
     if(diff < 0) openViewer(IDX + 1);
     else openViewer(IDX - 1);
   }
@@ -524,30 +608,32 @@ btnPromos.onclick=()=>{
   syncPromoBtn();
   populateFilters();
   applyFilters();
+  showToast(SHOW_PROMOS ? "151 Promo's toegevoegd" : "151 Promo's verborgen");
 };
 
 const btnBinder = document.getElementById('btn-binder');
 btnBinder.onclick=()=>{
   BINDER_MODE = !BINDER_MODE;
   BINDER_PAGE = 0;
-  btnBinder.textContent = `Binder 3×3: ${BINDER_MODE?'AAN':'UIT'}`;
+  btnBinder.textContent = BINDER_MODE ? 'Binder 3×3: AAN' : 'Binder 3×3';
   btnBinder.classList.toggle('active-toggle', BINDER_MODE);
   renderGrid();
 };
 document.getElementById('binderPrev').onclick=()=>{BINDER_PAGE--;renderGrid();};
 document.getElementById('binderNext').onclick=()=>{BINDER_PAGE++;renderGrid();};
+document.getElementById('binderPageSel').onchange=(e)=>{BINDER_PAGE=parseInt(e.target.value,10)||0;renderGrid();};
 
 document.getElementById('btn-copy-dupes').onclick=async()=>{
   const all = getAllActiveCards();
   const dupes = all.filter(c => QTY[c.id] && QTY[c.id] > 1);
   if(!dupes.length){
-    alert('Je hebt nog geen dubbele kaarten gemarkeerd (houd een kaart ingedrukt om dubbele toe te voegen).');
+    showToast('Nog geen dubbele kaarten (houd een kaart ingedrukt)');
     return;
   }
   const lines = ['Pokémon SV 151 – Dubbele kaarten (ruil/verkoop):', ...dupes.map(c => `- #${c.number} ${c.name} (${QTY[c.id]-1}x dubbel)`)];
   try{
     await navigator.clipboard.writeText(lines.join('\n'));
-    alert(`${dupes.length} dubbele kaarten gekopieerd naar je klembord!`);
+    showToast(`${dupes.length} dubbele kaarten gekopieerd!`);
   }catch(_){
     prompt('Kopieer je ruillijst:', lines.join('\n'));
   }
@@ -556,6 +642,7 @@ document.getElementById('btn-copy-dupes').onclick=async()=>{
 document.getElementById('btn-export').onclick=()=>{
   const blob=new Blob([JSON.stringify({master:MASTER,wishlist:WISH,qty:QTY,paid:PAID},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sv151-masterset-backup.json'; a.click();
+  showToast('Back-up geëxporteerd');
 };
 document.getElementById('btn-import').onclick=()=>{
   const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json';
@@ -568,6 +655,7 @@ document.getElementById('btn-import').onclick=()=>{
     }
     WISH=obj.wishlist||{}; QTY=obj.qty||{}; PAID=obj.paid||{};
     saveAll(); applyFilters();
+    showToast('Collectie geïmporteerd');
   };
   inp.click();
 };
@@ -576,9 +664,9 @@ document.getElementById('btn-cache').onclick=async()=>{
   try{
     const reg=await navigator.serviceWorker.ready;
     const ch=new MessageChannel();
-    ch.port1.onmessage=(e)=>{if(e.data?.done) alert('Alle kaartafbeeldingen zijn gecachet voor offline gebruik!');};
+    ch.port1.onmessage=(e)=>{if(e.data?.done) showToast('Alle afbeeldingen zijn offline opgeslagen!');};
     reg.active.postMessage({type:'PREFETCH_ALL',cards:getAllActiveCards()},[ch.port2]);
-  }catch(e){alert('Service worker nog niet actief. Herlaad en probeer opnieuw.');}
+  }catch(e){showToast('Service worker nog niet actief, herlaad even');}
 };
 
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js'));}
@@ -592,4 +680,3 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   fetchAll();
   setTabs();
 })();
-  
