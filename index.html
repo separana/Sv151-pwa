@@ -7,35 +7,25 @@
   <meta name="theme-color" content="#0b0d10">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <header>
-    <div class="wrap">
-      <h1>Pokémon TCG – Scarlet &amp; Violet 151</h1>
-      <div class="sub">Master Set Tracker • Normal &amp; Reverse Holo • Promo's • Binder 3×3 • Cardmarket</div>
+    <div class="wrap header-flex">
+      <div>
+        <h1>Pokémon TCG – Scarlet &amp; Violet 151</h1>
+        <div class="sub">Master Set Tracker • Normal &amp; Reverse Holo • Promo's • Binder 3×3</div>
+      </div>
+      <span class="mew-badge">MEW • 151</span>
     </div>
   </header>
 
   <div class="toolbar">
     <div class="wrap">
       <div class="bar">
-        <input id="q" type="search" placeholder="Zoek naam of # (bv. 25, Pikachu)" style="flex:1;min-width:170px">
-        <select id="typeSel"><option value="">Alle types</option></select>
-        <select id="rarSel"><option value="">Alle rarities</option></select>
-        <select id="ownedSel">
-          <option value="">Alles</option>
-          <option value="owned">Compleet (alle varianten)</option>
-          <option value="partial">Deels (mist N of RH)</option>
-          <option value="missing">Nog volledig nodig</option>
-          <option value="missing-rh">Mist Reverse Holo</option>
-          <option value="dupes">Dubbele (ruil)</option>
-        </select>
-        <select id="sortSel">
-          <option value="num">Sorteer: Nummer</option>
-          <option value="price">Sorteer: Prijs (hoog → laag)</option>
-          <option value="name">Sorteer: Naam</option>
-        </select>
+        <input id="q" type="search" placeholder="Zoek naam of # (bv. 25, Pikachu)" style="flex:1;min-width:140px">
+        <button id="btn-binder" title="Wissel tussen overzicht en 3x3 verzamelmap">Binder 3×3</button>
+        <button id="btn-filters" aria-expanded="false">Filters ▾</button>
       </div>
 
       <div class="bar" style="margin-top:8px">
@@ -44,14 +34,34 @@
           <div class="tab" id="tab-wish">Wishlist</div>
         </div>
         <button id="btn-promos" title="Toon of verberg 151 promo's & cosmos energieën">+ Promo's: UIT</button>
-        <button id="btn-binder" title="Wissel tussen overzicht en 3x3 verzamelmap">Binder 3×3: UIT</button>
-        <button id="btn-copy-dupes">Kopieer ruillijst</button>
-        <button id="btn-export">Exporteer</button>
-        <button id="btn-import">Importeer</button>
-        <button id="btn-cache" class="primary">Offline</button>
       </div>
 
-      <div class="hint">Tik op <b>N</b> of <b>RH</b> om varianten aan te vinken. <b>Lang tikken</b> op een kaart verhoogt dubbele. <b>Dubbelklik</b> op de afbeelding voor de viewer &amp; aankoopprijs.</div>
+      <div id="filterDrawer" class="filter-drawer" style="display:none">
+        <div class="bar" style="margin-top:8px">
+          <select id="typeSel"><option value="">Alle types</option></select>
+          <select id="rarSel"><option value="">Alle rarities</option></select>
+          <select id="ownedSel">
+            <option value="">Status: Alles</option>
+            <option value="owned">Compleet (alle varianten)</option>
+            <option value="partial">Deels (mist N of RH)</option>
+            <option value="missing">Nog volledig nodig</option>
+            <option value="missing-rh">Mist Reverse Holo</option>
+            <option value="dupes">Dubbele (ruil)</option>
+          </select>
+          <select id="sortSel">
+            <option value="num">Sorteer: Nummer</option>
+            <option value="price">Sorteer: Prijs (hoog → laag)</option>
+            <option value="name">Sorteer: Naam</option>
+          </select>
+        </div>
+        <div class="bar" style="margin-top:8px">
+          <button id="btn-copy-dupes">Kopieer ruillijst</button>
+          <button id="btn-export">Exporteer</button>
+          <button id="btn-import">Importeer</button>
+          <button id="btn-cache" class="primary">Offline opslaan</button>
+        </div>
+        <div class="hint">Tik op <b>Normal</b> of <b>Reverse</b> om varianten aan te vinken. <b>Lang tikken</b> op een kaart verhoogt dubbele. <b>Dubbelklik</b> op de afbeelding voor de holo-viewer &amp; aankoopprijs.</div>
+      </div>
     </div>
   </div>
 
@@ -67,7 +77,7 @@
           <div class="stat">
             <div class="label">Waarde collectie</div>
             <div class="value" id="ownedValue">—</div>
-            <div class="small" id="investInfo">Investering: € 0,00</div>
+            <div class="small" id="investInfo">Betaald: € 0,00</div>
           </div>
           <div class="stat">
             <div class="label">Wishlist waarde</div>
@@ -92,9 +102,12 @@
     </section>
 
     <div id="binderBar" class="binder-bar" style="display:none">
-      <button id="binderPrev">← Vorige pagina</button>
-      <div id="binderTitle" style="font-weight:700">Pagina 1 / 23 (#001 – #009)</div>
-      <button id="binderNext">Volgende pagina →</button>
+      <button id="binderPrev">← Vorige</button>
+      <div class="binder-center">
+        <select id="binderPageSel" aria-label="Kies mappagina"></select>
+        <div id="binderRange" class="small">#001 – #009</div>
+      </div>
+      <button id="binderNext">Volgende →</button>
     </div>
 
     <section class="wrap" style="padding:0">
@@ -105,7 +118,13 @@
 
   <dialog id="viewer">
     <div class="viewer" id="viewerTouchArea">
-      <div class="img"><img id="big" alt=""></div>
+      <div class="img">
+        <div class="holo-card" id="holoCard">
+          <img id="big" alt="">
+          <div class="holo-shine" id="holoShine"></div>
+        </div>
+        <div class="small" style="margin-top:8px;text-align:center">Beweeg over de kaart voor holo-glans • Veeg links/rechts</div>
+      </div>
       <div class="info">
         <div>
           <div id="vName" style="font-weight:800;font-size:18px"></div>
@@ -137,7 +156,8 @@
     </div>
   </dialog>
 
- <script src="script.js?v=3" defer></script>
-  
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="script.js?v=5" defer></script>
 </body>
 </html>
